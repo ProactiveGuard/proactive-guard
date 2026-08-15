@@ -1,0 +1,52 @@
+<!DOCTYPE html> 
+<html> 
+<head> 
+    <title>Proactive Guard - Live Map</title> 
+
+    <!-- 1. This imports the Leaflet Map Styling --> 
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /> 
+
+    <!-- 2. This imports the Leaflet Map Brain/Logic --> 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script> 
+
+    <!-- 3. Make the map take up the whole screen --> 
+    <style> 
+        body { margin: 0; padding: 0; } 
+        #map { width: 100vw; height: 100vh; } 
+    </style> 
+</head> 
+<body> 
+
+    <!-- 4. This empty box is where the map will be drawn --> 
+    <div id="map"></div> 
+
+    <script> 
+        // --- THIS IS THE JAVASCRIPT LOGIC --- 
+
+        // Step A: Set the GPS Coordinates (Latitude, Longitude). Let's use New Delhi. 
+        var dangerLocation = [28.6139, 77.2090]; 
+
+        // Step B: Create the map and set the zoom level (13 is zoomed in closely) 
+        var map = L.map('map').setView(dangerLocation, 13); 
+
+        // Step C: Load the actual street images from OpenStreetMap (Free!) 
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+            maxZoom: 19, 
+            attribution: '© OpenStreetMap' 
+        }).addTo(map); 
+
+        // Step D: Drop a Blue Pin (Marker) on our danger location 
+        var marker = L.marker(dangerLocation).addTo(map); 
+        marker.bindPopup("<b>Alert!</b><br>User U-047 is here.").openPopup(); 
+
+        // Step E: Draw a Red "Danger Zone" circle around the pin (radius is in meters) 
+        var circle = L.circle(dangerLocation, { 
+            color: 'red', 
+            fillColor: '#f03', 
+            fillOpacity: 0.5, 
+            radius: 500 // 500 meters 
+        }).addTo(map); 
+
+    </script> 
+</body> 
+</html>
