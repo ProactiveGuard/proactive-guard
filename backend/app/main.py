@@ -2,9 +2,14 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from datetime import datetime
 
-app = FastAPI(title="Proactive Guard API (Mock Version)")
+# Import Member 5's amazing AI Engine!
+from ai_engine.risk import evaluate_risk, generate_ai_summary
+# Import the Supabase connection we just created
+from app.services.supabase import supabase_db
 
-# Mock Data Models
+app = FastAPI(title="Proactive Guard API")
+
+# Data Models
 class TelemetryData(BaseModel):
     user_id: str
     latitude: float
@@ -24,23 +29,45 @@ def read_root():
 
 @app.post("/api/v1/telemetry", response_model=IncidentResponse)
 def receive_telemetry(data: TelemetryData):
-    # This is our "Fake AI" for Day 1
-    # We calculate a simple risk score based on the inputs
-    risk = int((data.audio_score * 0.6 + data.motion_score * 0.4) * 100)
+    # 1. Ask Member 5's AI engine to evaluate the danger!
+    # (Assuming time is 22:00 and they are slightly off route for testing)
+    risk_data = evaluate_risk(
+        audio_level=int(data.audio_score), 
+        motion_speed=int(data.motion_score),
+        time_of_day=22, 
+        is_off_route=True, 
+        location_name="Unknown Location"
+    )
     
-    severity = "SAFE"
-    if risk > 80:
-        severity = "CRITICAL"
-    elif risk > 60:
-        severity = "HIGH"
-    elif risk > 30:
-        severity = "MONITOR"
+    # 2. Get the beautiful AI summary
+    summary_text = generate_ai_summary(data.user_id, risk_data)
+    
+    incident_id = f"INC-{int(datetime.now().timestamp())}"
+    
+    # 3. If it's dangerous, SAVE it to Supabase!
+    if risk_data["risk_level"] in ["CRITICAL", "HIGH RISK"]:
+        if supabase_db is not None:
+            incident_record = {
+                "incident_id": incident_id,
+                "user_id": data.user_id,
+                "severity": risk_data["risk_level"],
+                "risk_score": risk_data["risk_score"],
+                "latitude": data.latitude,
+                "longitude": data.longitude,
+                "summary": summary_text
+            }
+            try:
+                # Insert into the 'incidents' table
+                supabase_db.table("incidents").insert(incident_record).execute()
+                print(f"✅ Successfully saved incident {incident_id} to Supabase!")
+            except Exception as e:
+                print(f"❌ Failed to save to Supabase: {e}")
 
     return {
-        "incident_id": f"INC-{int(datetime.now().timestamp())}",
-        "severity": severity,
-        "risk_score": risk,
-        "summary": f"Received telemetry for user {data.user_id}. Audio and motion levels indicate {severity} status."
+        "incident_id": incident_id,
+        "severity": risk_data["risk_level"],
+        "risk_score": int(risk_data["risk_score"]),
+        "summary": summary_text
     }
 
 @app.get("/incidents")
