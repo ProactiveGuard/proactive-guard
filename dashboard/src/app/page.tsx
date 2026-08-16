@@ -1,3 +1,14 @@
+"use client";
+
+import dynamic from "next/dynamic";
+
+const LiveMap = dynamic(
+  () => import("../components/LiveMap"),
+  {
+    ssr: false
+  }
+);
+
 export default function CommandCenter() {
   return (
     <main className="min-h-screen bg-gray-900 text-white p-8">
@@ -34,6 +45,15 @@ export default function CommandCenter() {
           Dispatch Help
         </button>
       </div>
+
+      {/* Live Map */}
+      <section className="mt-8 max-w-5xl">
+        <h2 className="text-xl font-semibold mb-4">
+          Live Location
+        </h2>
+
+        <LiveMap />
+      </section>
     </main>
   );
 }
