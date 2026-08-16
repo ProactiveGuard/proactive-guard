@@ -1,11 +1,34 @@
+# Proactive Guard - AI Risk Engine
+# Person 5: The "AI" & Logic Thinker
+
+"""
+Risk calculation engine and AI summary generator for Proactive Guard.
+
+This module evaluates sensor inputs (audio level, motion speed, time of day, route status)
+to calculate a risk score (0-100) and determine the safety level.
+It also generates human-readable incident summaries for emergency dashboards.
+
+Day 2 rule: if the user is more than OFF_ROUTE_THRESHOLD_M (500 meters) from the
+planned route, add +3 to the total danger score.
+"""
+
+import sys
+from pathlib import Path
 from typing import Dict, Any, Optional
+
+# Make backend/ importable so this script works when run directly
+# (python ai_engine/risk.py) AND when imported by app/main.py.
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from ai_engine.geo import OFF_ROUTE_THRESHOLD_M
 
 
 def calculate_risk(
     audio_level: int,
     motion_speed: int,
     time_of_day: Optional[int] = None,
-    is_off_route: bool = False
+    is_off_route: bool = False,
+    distance_off_route_m: Optional[float] = None
 ) -> str:
     """
     Beginner-friendly risk calculation function (Day 1 Playbook baseline).
@@ -15,6 +38,8 @@ def calculate_risk(
     - motion_speed (int): 1 to 10 scale (1 = Still, 10 = Running/Falling)
     - time_of_day (int, optional): Hour in 24-hour format (0-23). 2 AM - 6 AM adds sensitivity.
     - is_off_route (bool, optional): True if user deviated from planned route.
+    - distance_off_route_m (float, optional): Distance from route in meters.
+      If greater than 500, the user is treated as off-route (+3 danger score, Day 2 rule).
 
     Returns:
     - str: Risk assessment decision string.
@@ -31,9 +56,11 @@ def calculate_risk(
         elif time_of_day >= 22 or time_of_day < 2:
             total_score += 1.0
 
-    # Step 3: Off-route bonus
+    # Step 3: Off-route bonus (Day 2 rule: +3 if more than 500 meters off route)
+    if distance_off_route_m is not None:
+        is_off_route = distance_off_route_m > OFF_ROUTE_THRESHOLD_M
     if is_off_route:
-        total_score += 1.5
+        total_score += 3.0
 
     # Step 4: Decision thresholding
     if total_score >= 8.0:
@@ -51,10 +78,18 @@ def evaluate_risk(
     motion_speed: int,
     time_of_day: Optional[int] = None,
     is_off_route: bool = False,
-    location_name: str = "Unknown Location"
+    location_name: str = "Unknown Location",
+    distance_off_route_m: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Advanced risk evaluation returning detailed metrics, score out of 100, and recommended actions.
+
+    Day 2 rule: if the user is more than OFF_ROUTE_THRESHOLD_M (500 meters)
+    from the planned route, add +3 to the total danger score.
+
+    Parameters:
+    - distance_off_route_m (float, optional): Precomputed distance from the
+      planned route in meters (compute it with geo.calculate_distance).
 
     Returns dict with keys:
     - risk_score (float): 0-100 scale
@@ -67,6 +102,10 @@ def evaluate_risk(
     audio = max(1, min(10, audio_level))
     motion = max(1, min(10, motion_speed))
 
+    # Day 2: derive off-route status from GPS distance (500m rule)
+    if distance_off_route_m is not None:
+        is_off_route = distance_off_route_m > OFF_ROUTE_THRESHOLD_M
+
     # Base weighted score out of 10
     base_score = (audio * 0.6) + (motion * 0.4)
 
@@ -78,7 +117,7 @@ def evaluate_risk(
         elif time_of_day >= 22 or time_of_day < 2:
             time_bonus = 1.0  # Moderate night risk (10 PM - 2 AM)
 
-    route_bonus = 2.0 if is_off_route else 0.0
+    route_bonus = 3.0 if is_off_route else 0.0  # Day 2 rule: +3 when off route
 
     # Scaled total score (max possible ~ 14.0 -> normalized to 100)
     raw_total = base_score + time_bonus + route_bonus
@@ -113,6 +152,7 @@ def evaluate_risk(
             "time_of_day": time_of_day,
             "is_off_route": is_off_route,
             "location_name": location_name,
+            "distance_off_route_m": distance_off_route_m,
         }
     }
 
@@ -157,19 +197,20 @@ if __name__ == "__main__":
     print("=" * 65)
 
     scenarios = [
-        {"name": "Quiet Library", "audio": 1, "motion": 1, "time": 14, "off_route": False, "loc": "Central Library"},
-        {"name": "Jogging in Park", "audio": 4, "motion": 7, "time": 16, "off_route": False, "loc": "City Park"},
-        {"name": "Off-Route Night Walk", "audio": 6, "motion": 4, "time": 23, "off_route": True, "loc": "Main Street Alley"},
-        {"name": "Screaming & Running at 3 AM", "audio": 10, "motion": 9, "time": 3, "off_route": True, "loc": "Outer Ring Road"},
+        {"name": "Quiet Library", "audio": 1, "motion": 1, "time": 14, "off_route": False, "loc": "Central Library", "dist": None},
+        {"name": "Jogging in Park", "audio": 4, "motion": 7, "time": 16, "off_route": False, "loc": "City Park", "dist": None},
+        {"name": "Off-Route Night Walk", "audio": 6, "motion": 4, "time": 23, "off_route": True, "loc": "Main Street Alley", "dist": None},
+        {"name": "Screaming & Running at 3 AM", "audio": 10, "motion": 9, "time": 3, "off_route": True, "loc": "Outer Ring Road", "dist": None},
+        {"name": "Dragged Into Car (Silent)", "audio": 2, "motion": 3, "time": 2, "off_route": False, "loc": "Unknown Route", "dist": 1200.0},
     ]
 
     for idx, s in enumerate(scenarios, 1):
         print(f"\nScenario {idx}: {s['name']}")
-        decision = calculate_risk(s["audio"], s["motion"], s["time"], s["off_route"])
-        eval_data = evaluate_risk(s["audio"], s["motion"], s["time"], s["off_route"], s["loc"])
+        decision = calculate_risk(s["audio"], s["motion"], s["time"], s["off_route"], s["dist"])
+        eval_data = evaluate_risk(s["audio"], s["motion"], s["time"], s["off_route"], s["loc"], s["dist"])
         ai_summary = generate_ai_summary("U-047", eval_data)
 
-        print(f"  Inputs      : Audio={s['audio']}/10 | Motion={s['motion']}/10 | Time={s['time']}:00 | Off-Route={s['off_route']}")
+        print(f"  Inputs      : Audio={s['audio']}/10 | Motion={s['motion']}/10 | Time={s['time']}:00 | Off-Route={s['off_route']} | Dist={s['dist']}")
         print(f"  Decision    : {decision}")
         print(f"  Risk Score  : {eval_data['risk_score']}/100 [{eval_data['risk_level']}]")
         print(f"  Action      : {eval_data['action_recommended']}")

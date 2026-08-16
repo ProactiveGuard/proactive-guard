@@ -4,6 +4,8 @@ from datetime import datetime
 
 # Import Member 5's amazing AI Engine!
 from ai_engine.risk import evaluate_risk, generate_ai_summary
+# Import Member 5's LLM summary generator (Gemini, with offline fallback)
+from app.services.llm import generate_police_summary
 # Import the Supabase connection we just created
 from app.services.supabase import supabase_db
 
@@ -16,6 +18,7 @@ class TelemetryData(BaseModel):
     longitude: float
     motion_score: float
     audio_score: float
+    distance_off_route_m: float = 0.0
 
 class IncidentResponse(BaseModel):
     incident_id: str
@@ -35,12 +38,19 @@ def receive_telemetry(data: TelemetryData):
         audio_level=int(data.audio_score), 
         motion_speed=int(data.motion_score),
         time_of_day=22, 
-        is_off_route=True, 
-        location_name="Unknown Location"
+        is_off_route=False, 
+        location_name="Unknown Location",
+        distance_off_route_m=data.distance_off_route_m
     )
     
-    # 2. Get the beautiful AI summary
-    summary_text = generate_ai_summary(data.user_id, risk_data)
+    # 2. Get the beautiful AI summary (Gemini writes it; offline fallback included)
+    summary_text = generate_police_summary(
+        audio_score=data.audio_score,
+        motion_score=data.motion_score,
+        distance_off_route=data.distance_off_route_m,
+        risk_level=risk_data["risk_level"],
+        risk_score=risk_data["risk_score"],
+    )
     
     incident_id = f"INC-{int(datetime.now().timestamp())}"
     
@@ -59,9 +69,9 @@ def receive_telemetry(data: TelemetryData):
             try:
                 # Insert into the 'incidents' table
                 supabase_db.table("incidents").insert(incident_record).execute()
-                print(f"✅ Successfully saved incident {incident_id} to Supabase!")
+                print(f"Successfully saved incident {incident_id} to Supabase!")
             except Exception as e:
-                print(f"❌ Failed to save to Supabase: {e}")
+                print(f"Failed to save to Supabase (duplicate alert or DB issue): {e}")
 
     return {
         "incident_id": incident_id,

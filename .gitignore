@@ -3,6 +3,11 @@
 *.log
 *.pyc
 *.swp
+
+# Python secrets & caches
+.env
+__pycache__/
+*.py[cod]
 .DS_Store
 .atom/
 .build/
