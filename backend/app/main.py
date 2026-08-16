@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -107,3 +107,35 @@ def check_status():
         "status": "I am ok ",
         "message": "Proactive Guard API is running and ready to receive telemetry data."
     }
+
+# Create a data model for the Journey request
+class JourneyRequest(BaseModel):
+    user_id: str
+
+@app.post("/api/v1/journey/start")
+def start_journey(request: JourneyRequest):
+    journey_id = f"JRN-{int(datetime.now().timestamp())}"
+    
+    journey_data = {
+        "journey_id": journey_id,
+        "user_id": request.user_id,
+        "status": "active",
+        "start_time": str(datetime.now())
+    }
+    
+    try:
+        # Save the new journey to Supabase
+        supabase_db.table("journeys").insert(journey_data).execute()
+        return {"message": "Journey started successfully!", "journey_id": journey_id}
+    except Exception as e:
+        # Crash-Proofing: Instead of crashing the server, politely tell the app what went wrong!
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@app.post("/api/v1/journey/stop")
+def stop_journey(journey_id: str):
+    try:
+        # Update the specific journey in the database to be "completed"
+        supabase_db.table("journeys").update({"status": "completed"}).eq("journey_id", journey_id).execute()
+        return {"message": f"Journey {journey_id} has safely concluded."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Could not stop journey.")
