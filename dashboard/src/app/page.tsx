@@ -1,15 +1,52 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 
 const LiveMap = dynamic(
   () => import("../components/LiveMap"),
   {
-    ssr: false
+    ssr: false,
   }
 );
 
+type Incident = {
+  incident_id: string;
+  severity: string;
+  risk_score: number;
+  latitude: number;
+  longitude: number;
+  summary: string;
+};
+
 export default function CommandCenter() {
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [dispatching, setDispatching] = useState<string | null>(null);
+  const [dispatched, setDispatched] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchIncidents = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/incidents");
+        const data = await response.json();
+        setIncidents(data);
+      } catch (error) {
+        console.error("Failed to connect to backend:", error);
+      }
+    };
+
+    fetchIncidents();
+  }, []);
+
+  const handleDispatch = (incidentId: string) => {
+    setDispatching(incidentId);
+
+    setTimeout(() => {
+      setDispatching(null);
+      setDispatched((previous) => [...previous, incidentId]);
+    }, 1000);
+  };
+
   return (
     <main className="min-h-screen bg-gray-900 text-white p-8">
       <h1 className="text-3xl font-bold text-red-500">
@@ -21,32 +58,55 @@ export default function CommandCenter() {
       </p>
 
       <h2 className="text-xl font-semibold mt-8 mb-4">
-        Active Alerts (1)
+        Active Alerts ({incidents.length})
       </h2>
 
-      <div className="bg-gray-800 border-l-8 border-red-600 p-6 rounded-md max-w-2xl">
-        <h3 className="text-2xl font-bold text-red-400">
-          CRITICAL: Physical Distress
-        </h3>
+      {incidents.map((incident) => {
+        const isDispatching = dispatching === incident.incident_id;
+        const isDispatched = dispatched.includes(incident.incident_id);
 
-        <p className="text-gray-300 mt-2">
-          Incident ID: INC-1001
-        </p>
+        return (
+          <div
+            key={incident.incident_id}
+            className="bg-gray-800 border-l-8 border-red-600 p-6 rounded-md max-w-2xl mb-4"
+          >
+            <h3 className="text-2xl font-bold text-red-400">
+              {incident.severity}: Threat Detected
+            </h3>
 
-        <p className="text-gray-300">
-          User: U-047
-        </p>
+            <p className="text-gray-300 mt-2">
+              Incident ID: {incident.incident_id}
+            </p>
 
-        <p className="text-gray-400 mt-4 italic">
-          "Audio score is very high. User deviated from planned route."
-        </p>
+            <p className="text-gray-300">
+              Risk Score: {incident.risk_score}/100
+            </p>
 
-        <button className="bg-red-600 text-white font-bold py-2 px-4 rounded mt-6">
-          Dispatch Help
-        </button>
-      </div>
+            <p className="text-gray-400 mt-4 italic">
+              "{incident.summary}"
+            </p>
 
-      {/* Live Map */}
+            <button
+              onClick={() => handleDispatch(incident.incident_id)}
+              disabled={isDispatching || isDispatched}
+              className={
+                isDispatched
+                  ? "bg-green-600 text-white font-bold py-2 px-4 rounded mt-6"
+                  : isDispatching
+                  ? "bg-gray-600 text-white font-bold py-2 px-4 rounded mt-6 cursor-wait"
+                  : "bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mt-6"
+              }
+            >
+              {isDispatched
+                ? "Help Dispatched ✓"
+                : isDispatching
+                ? "Dispatching..."
+                : "Dispatch Help"}
+            </button>
+          </div>
+        );
+      })}
+
       <section className="mt-8 max-w-5xl">
         <h2 className="text-xl font-semibold mb-4">
           Live Location
