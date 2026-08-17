@@ -56,3 +56,7 @@ app.*.map.json
 node_modules/
 .next/
 
+
+# TypeScript build cache
+dashboard/tsconfig.tsbuildinfo
+

@@ -112,7 +112,15 @@ export default function CommandCenter() {
           Live Location
         </h2>
 
-        <LiveMap />
+        <LiveMap 
+          targetLat={28.6139}
+          targetLng={77.2090}
+          routeCoords={[
+            [28.6110, 77.2050],
+            [28.6125, 77.2075],
+            [28.6139, 77.2090]
+          ]}
+        />
       </section>
     </main>
   );

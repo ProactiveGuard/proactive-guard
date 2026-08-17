@@ -24,17 +24,19 @@ L.Icon.Default.mergeOptions({
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png"
 });
 
-export default function LiveMap() {
-  const dangerLocation: [number, number] = [
-    28.6139,
-    77.2090
-  ];
+interface MapProps {
+  targetLat: number;
+  targetLng: number;
+  routeCoords?: [number, number][];
+  safeZones?: {
+    lat: number;
+    lng: number;
+    radius: number;
+  }[];
+}
 
-  const userPath: [number, number][] = [
-    [28.6110, 77.2050],
-    [28.6125, 77.2075],
-    [28.6139, 77.2090]
-  ];
+export default function LiveMap({ targetLat, targetLng, routeCoords, safeZones }: MapProps) {
+  const dangerLocation: [number, number] = [targetLat, targetLng];
 
   return (
     <div
@@ -72,13 +74,16 @@ export default function LiveMap() {
           </Popup>
         </Marker>
 
-        <Polyline
-          positions={userPath}
-          pathOptions={{
-            color: "blue",
-            weight: 4
-          }}
-        />
+        {routeCoords && routeCoords.length > 1 && (
+          <Polyline
+            positions={routeCoords}
+            pathOptions={{
+              color: "blue",
+              weight: 4,
+              dashArray: "10,10"
+            }}
+          />
+        )}
       </MapContainer>
     </div>
   );
