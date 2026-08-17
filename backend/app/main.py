@@ -2,9 +2,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
-from ai_engine.risk import evaluate_risk, generate_ai_summary
-from app.services.llm import generate_police_summary
+from ai_engine.risk import evaluate_risk, generate_ai_summary, detect_struggle
+from app.services.llm import generate_police_summary, analyze_audio_transcript
 from app.services.supabase import supabase_db
 
 
@@ -38,6 +39,8 @@ class TelemetryData(BaseModel):
     motion_score: float
     audio_score: float
     distance_off_route_m: float = 0.0
+    previous_motion_score: Optional[float] = None
+    audio_transcript: Optional[str] = None
 
 
 class IncidentResponse(BaseModel):
@@ -81,7 +84,13 @@ def check_status():
 @app.post("/api/v1/telemetry", response_model=IncidentResponse)
 def receive_telemetry(data: TelemetryData):
 
-    # Evaluate risk using AI engine
+    # Day 3: Run NLP threat analysis on audio transcript if provided
+    transcript_threat = None
+    if data.audio_transcript:
+        transcript_result = analyze_audio_transcript(data.audio_transcript)
+        transcript_threat = transcript_result.get("is_threat", False)
+
+    # Evaluate risk using AI engine (Day 3: includes struggle + transcript overrides)
     risk_data = evaluate_risk(
         audio_level=int(data.audio_score),
         motion_speed=int(data.motion_score),
@@ -89,6 +98,8 @@ def receive_telemetry(data: TelemetryData):
         is_off_route=data.distance_off_route_m > 0,
         location_name="Unknown Location",
         distance_off_route_m=data.distance_off_route_m,
+        previous_motion=int(data.previous_motion_score) if data.previous_motion_score is not None else None,
+        audio_transcript_threat=transcript_threat,
     )
 
     # Generate police summary

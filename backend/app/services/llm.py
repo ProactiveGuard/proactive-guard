@@ -19,6 +19,7 @@ Uses the current `google-genai` SDK (the old `google-generativeai` package is de
 """
 
 import os
+import json
 from pathlib import Path
 
 # Load backend/.env (GEMINI_API_KEY) so the script works standalone too.
@@ -121,6 +122,60 @@ Write a strict, 2-sentence emergency summary for the police dashboard.
     return _fallback_summary(audio_score, motion_score, distance_off_route, risk_level, risk_score)
 
 
+def analyze_audio_transcript(transcript: str) -> dict:
+    """
+    Uses Gemini to analyze transcribed audio from the phone's microphone.
+    Returns a JSON dict with a threat level.
+
+    Day 3 upgrade: reads live speech-to-text output and determines whether
+    the user is in danger based on keywords and conversational context.
+
+    Parameters:
+    - transcript (str): The speech-to-text output from the user's phone.
+
+    Returns:
+    - dict: {"is_threat": bool, "threat_reason": str}
+    """
+    if _client is not None:
+        try:
+            prompt = f"""
+You are an AI safety analyst. Read the following audio transcript from a user's phone.
+Determine if the user is in danger.
+Look for keywords like "help", "stop", "leave me alone", or signs of a struggle.
+
+Transcript: "{transcript}"
+
+Reply ONLY with a valid JSON in this exact format:
+{{"is_threat": true/false, "threat_reason": "your reasoning"}}
+"""
+            chat = _client.chats.create(model=GEMINI_MODEL)
+            response = chat.send_message(prompt)
+            raw = response.text.strip().replace("```json", "").replace("```", "")
+            return json.loads(raw)
+        except Exception:
+            return {"is_threat": False, "threat_reason": "AI Error - could not analyze transcript"}
+    else:
+        return _fallback_transcript_analysis(transcript)
+
+
+def _fallback_transcript_analysis(transcript: str) -> dict:
+    """
+    Deterministic keyword-based fallback when Gemini is not available.
+    Scans for common distress keywords.
+    """
+    danger_keywords = [
+        "help", "stop", "leave me alone", "go away", "don't touch me",
+        "back off", "no", "please stop", "let me go", "calling police",
+        "emergency", "rape", "murder", "kill", "stab", "weapon",
+        "help me", "save me", "someone", "attack",
+    ]
+    lower = transcript.lower()
+    for keyword in danger_keywords:
+        if keyword in lower:
+            return {"is_threat": True, "threat_reason": f"Distress keyword detected: '{keyword}'"}
+    return {"is_threat": False, "threat_reason": "No distress indicators found in transcript"}
+
+
 # --- AUTOMATED SIMULATION & TESTING ---
 if __name__ == "__main__":
     print("=" * 65)
@@ -138,6 +193,13 @@ if __name__ == "__main__":
     )
     print("--- AI SUMMARY GENERATOR ---")
     print(summary)
+
+    print("\n--- NLP THREAT ANALYSIS (Day 3) ---")
+    safe = analyze_audio_transcript("Hey, do you want to grab coffee later?")
+    print(f"Safe transcript:   {safe}")
+
+    threat = analyze_audio_transcript("Hey man, back off! I don't know you!")
+    print(f"Threat transcript: {threat}")
 
     print("\n" + "=" * 65)
     print("LLM TEST SIMULATION COMPLETED")

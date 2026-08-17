@@ -23,12 +23,36 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from ai_engine.geo import OFF_ROUTE_THRESHOLD_M
 
 
+def detect_struggle(previous_motion: int, current_motion: int) -> bool:
+    """
+    Detects sudden, violent changes in movement (e.g., a phone dropping or a struggle).
+
+    Day 3 upgrade: compares the delta between the previous and current motion score.
+    A spike of 6+ points in a single reading indicates a fall, shove, or violent act.
+
+    Parameters:
+    - previous_motion (int): The user's last recorded motion score (1-10).
+    - current_motion (int): The user's current motion score (1-10).
+
+    Returns:
+    - bool: True if a sudden anomaly is detected.
+    """
+    motion_spike = abs(current_motion - previous_motion)
+
+    if motion_spike >= 6:
+        print("ANOMALY DETECTED: Sudden violent movement/fall!")
+        return True
+
+    return False
+
+
 def calculate_risk(
     audio_level: int,
     motion_speed: int,
     time_of_day: Optional[int] = None,
     is_off_route: bool = False,
-    distance_off_route_m: Optional[float] = None
+    distance_off_route_m: Optional[float] = None,
+    previous_motion: Optional[int] = None,
 ) -> str:
     """
     Beginner-friendly risk calculation function (Day 1 Playbook baseline).
@@ -41,9 +65,17 @@ def calculate_risk(
     - distance_off_route_m (float, optional): Distance from route in meters.
       If greater than 500, the user is treated as off-route (+3 danger score, Day 2 rule).
 
+    - previous_motion (int, optional): Previous motion score for Day 3 struggle detection.
+      If provided and a sudden spike is detected, risk is instantly set to CRITICAL.
+
     Returns:
     - str: Risk assessment decision string.
     """
+    # Day 3: Struggle detection override - if a violent motion spike is detected,
+    # bypass all normal math and instantly classify as CRITICAL (+25 points).
+    if previous_motion is not None and detect_struggle(previous_motion, motion_speed):
+        return "CRITICAL! Call Police immediately. Sudden anomaly detected (possible fall/struggle)."
+
     # Step 1: Weight the inputs (Audio 60%, Motion 40%)
     audio_score = audio_level * 0.6
     motion_score = motion_speed * 0.4
@@ -79,7 +111,9 @@ def evaluate_risk(
     time_of_day: Optional[int] = None,
     is_off_route: bool = False,
     location_name: str = "Unknown Location",
-    distance_off_route_m: Optional[float] = None
+    distance_off_route_m: Optional[float] = None,
+    previous_motion: Optional[int] = None,
+    audio_transcript_threat: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Advanced risk evaluation returning detailed metrics, score out of 100, and recommended actions.
@@ -90,6 +124,9 @@ def evaluate_risk(
     Parameters:
     - distance_off_route_m (float, optional): Precomputed distance from the
       planned route in meters (compute it with geo.calculate_distance).
+    - previous_motion (int, optional): Previous motion score for struggle detection (Day 3).
+    - audio_transcript_threat (bool, optional): True if NLP analysis detected a threat
+      in the user's transcribed audio (Day 3).
 
     Returns dict with keys:
     - risk_score (float): 0-100 scale
@@ -105,6 +142,44 @@ def evaluate_risk(
     # Day 2: derive off-route status from GPS distance (500m rule)
     if distance_off_route_m is not None:
         is_off_route = distance_off_route_m > OFF_ROUTE_THRESHOLD_M
+
+    # Day 3: Struggle detection override - instant CRITICAL
+    if previous_motion is not None and detect_struggle(previous_motion, motion):
+        return {
+            "risk_score": 100.0,
+            "risk_level": "CRITICAL",
+            "decision_text": "CRITICAL! Call Police immediately. Sudden anomaly detected (possible fall/struggle).",
+            "action_recommended": "Dispatch Emergency Services & Notify Police Immediately",
+            "metrics": {
+                "audio_level": audio,
+                "motion_speed": motion,
+                "time_of_day": time_of_day,
+                "is_off_route": is_off_route,
+                "location_name": location_name,
+                "distance_off_route_m": distance_off_route_m,
+                "struggle_detected": True,
+                "transcript_threat": audio_transcript_threat,
+            },
+        }
+
+    # Day 3: NLP transcript threat override - jump to CRITICAL
+    if audio_transcript_threat is True:
+        return {
+            "risk_score": 95.0,
+            "risk_level": "CRITICAL",
+            "decision_text": "CRITICAL! Threat detected from audio analysis. Call Police immediately.",
+            "action_recommended": "Dispatch Emergency Services & Notify Police Immediately",
+            "metrics": {
+                "audio_level": audio,
+                "motion_speed": motion,
+                "time_of_day": time_of_day,
+                "is_off_route": is_off_route,
+                "location_name": location_name,
+                "distance_off_route_m": distance_off_route_m,
+                "struggle_detected": False,
+                "transcript_threat": True,
+            },
+        }
 
     # Base weighted score out of 10
     base_score = (audio * 0.6) + (motion * 0.4)
@@ -153,6 +228,8 @@ def evaluate_risk(
             "is_off_route": is_off_route,
             "location_name": location_name,
             "distance_off_route_m": distance_off_route_m,
+            "struggle_detected": False,
+            "transcript_threat": audio_transcript_threat,
         }
     }
 
