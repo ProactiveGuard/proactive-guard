@@ -1,14 +1,13 @@
 const CACHE_NAME = 'proactive-guard-v1';
-const TILE_CACHE_NAME = 'proactive-guard-tiles-v1';
 const STATIC_ASSETS = [
   '/',
-  '/manifest.json'
+  '/manifest.json',
 ];
 
+const MAP_TILE_CACHE = 'map-tiles-v1';
 const TILE_PATTERNS = [
-  'tile.openstreetmap.org',
-  'basemaps.cartocdn.com',
-  'unpkg.com/leaflet'
+  'https://{s}.tile.openstreetmap.org/',
+  'https://{s}.basemaps.cartocdn.com/',
 ];
 
 self.addEventListener('install', (event) => {
@@ -25,7 +24,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name !== CACHE_NAME && name !== TILE_CACHE_NAME)
+          .filter((name) => name !== CACHE_NAME && name !== MAP_TILE_CACHE)
           .map((name) => caches.delete(name))
       );
     })
@@ -36,21 +35,20 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  if (TILE_PATTERNS.some((pattern) => url.hostname.includes(pattern))) {
+  if (TILE_PATTERNS.some((pattern) => url.href.startsWith(pattern))) {
     event.respondWith(
-      caches.open(TILE_CACHE_NAME).then(async (cache) => {
-        const cachedResponse = await cache.match(event.request);
-        if (cachedResponse) {
-          return cachedResponse;
+      caches.open(MAP_TILE_CACHE).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) {
+          return cached;
         }
-
         try {
-          const networkResponse = await fetch(event.request);
-          if (networkResponse.ok) {
-            cache.put(event.request, networkResponse.clone());
+          const response = await fetch(event.request);
+          if (response.ok) {
+            cache.put(event.request, response.clone());
           }
-          return networkResponse;
-        } catch (error) {
+          return response;
+        } catch {
           return new Response('Offline', { status: 503 });
         }
       })
@@ -58,22 +56,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (networkResponse.ok && event.request.method === 'GET') {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return networkResponse;
-      });
-    })
-  );
+  if (event.request.method === 'GET') {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        const fetchPromise = fetch(event.request)
+          .then((response) => {
+            if (response.ok) {
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
+            }
+            return response;
+          })
+          .catch(() => cached);
+        return cached || fetchPromise;
+      })
+    );
+  }
 });
 
 self.addEventListener('message', (event) => {
