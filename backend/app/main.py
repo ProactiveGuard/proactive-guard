@@ -445,7 +445,7 @@ async def websocket_endpoint(ws: WebSocket):
 # ============================================================
 # DAY 4 - RESOLVE & ASSIGN ENDPOINTS
 # ============================================================
-@app.delete("/api/v1/incidents/{incident_id}")
+@app.delete("/incidents/{incident_id}")
 async def resolve_incident(incident_id: str):
     if supabase_db is not None:
         try:
@@ -458,7 +458,7 @@ async def resolve_incident(incident_id: str):
 class AssignRequest(BaseModel):
     responder: str
 
-@app.patch("/api/v1/incidents/{incident_id}/assign")
+@app.patch("/incidents/{incident_id}/assign")
 async def assign_responder(incident_id: str, request: AssignRequest):
     if supabase_db is not None:
         try:
