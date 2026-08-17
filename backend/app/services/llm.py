@@ -53,39 +53,13 @@ def gemini_enabled() -> bool:
     return _client is not None
 
 
-def _fallback_summary(
-    audio_score: float,
-    motion_score: float,
-    distance_off_route: float,
-    risk_level: str,
-    risk_score: float,
-) -> str:
-    """Deterministic template used when Gemini is not available."""
-    parts = []
-    if distance_off_route > 0:
-        parts.append(
-            f"Subject has deviated {distance_off_route:.0f} meters from the expected route."
-        )
-    else:
-        parts.append("Subject is on the expected route.")
-    if audio_score >= 7:
-        parts.append(f"Severe background noise ({audio_score}/10) indicates immediate physical distress;")
-    elif motion_score >= 7:
-        parts.append(f"Rapid movement detected ({motion_score}/10) suggests a fall or struggle;")
-    else:
-        parts.append("Baseline distress indicators are elevated;")
-    parts.append(
-        f"risk level {risk_level} (score {risk_score}/100). Dispatch units immediately."
-    )
-    return " ".join(parts)
-
-
 def generate_police_summary(
     audio_score: float = 0.0,
     distance_off_route: float = 0.0,
     motion_score: float = 0.0,
     risk_level: str = "MONITOR",
     risk_score: float = 0.0,
+    language: str = "English",
 ) -> str:
     """
     Generate a 2-sentence emergency summary for the police dashboard.
@@ -98,9 +72,20 @@ def generate_police_summary(
     - motion_score (float): 0-10 motion danger score
     - risk_level (str): SAFE | MONITOR | HIGH RISK | CRITICAL
     - risk_score (float): 0-100 composite risk score
+    - language (str): Target language for summary (English, Hindi, Kannada, Tamil, Marathi, Bengali, Telugu)
     """
     if _client is not None:
         try:
+            language_instruction = {
+                "English": "Write in English.",
+                "Hindi": "हिंदी में लिखें।",
+                "Kannada": "ಕನ್ನಡದಲ್ಲಿ ಬರೆyin.",
+                "Tamil": "தமிழில் எழுதுக.",
+                "Marathi": "मराठीत लिहा.",
+                "Bengali": "বাংলায় লিখুন।",
+                "Telugu": "తెలుగులో వ్రాయండి.",
+            }.get(language, "Write in English.")
+            
             prompt = f"""
 You are an emergency dispatcher AI.
 A user's phone just triggered an alert.
@@ -109,6 +94,7 @@ The motion danger score is {motion_score}/10.
 They are {distance_off_route:.0f} meters off their expected route.
 The computed risk level is {risk_level} with a risk score of {risk_score}/100.
 Write a strict, 2-sentence emergency summary for the police dashboard.
+{language_instruction}
 """
             chat = _client.chats.create(model=GEMINI_MODEL)
             response = chat.send_message(prompt)
@@ -116,10 +102,94 @@ Write a strict, 2-sentence emergency summary for the police dashboard.
             if text:
                 return text
         except Exception:
-            # Fall back to the template if the API call fails (offline demo, etc.)
             pass
 
-    return _fallback_summary(audio_score, motion_score, distance_off_route, risk_level, risk_score)
+    return _fallback_summary(audio_score, motion_score, distance_off_route, risk_level, risk_score, language)
+
+
+def _fallback_summary(
+    audio_score: float,
+    motion_score: float,
+    distance_off_route: float,
+    risk_level: str,
+    risk_score: float,
+    language: str = "English",
+) -> str:
+    """Deterministic template used when Gemini is not available. Supports multiple languages."""
+    templates = {
+        "English": {
+            "on_route": "Subject is on the expected route.",
+            "off_route": "Subject has deviated {dist:.0f} meters from the expected route.",
+            "high_audio": "Severe background noise ({audio}/10) indicates immediate physical distress;",
+            "high_motion": "Rapid movement detected ({motion}/10) suggests a fall or struggle;",
+            "baseline": "Baseline distress indicators are elevated;",
+            "risk": "Risk level {level} (score {score}/100). Dispatch units immediately.",
+        },
+        "Hindi": {
+            "on_route": "विषय अपेक्षित मार्ग पर है।",
+            "off_route": "विषय अपेक्षित मार्ग से {dist:.0f} मीटर भटक गया है।",
+            "high_audio": "गंभीर पृष्ठभूमि शोर ({audio}/10) तत्काल शारीरिक संकट दर्शाता है;",
+            "high_motion": "तीव्र गति का पता चला ({motion}/10) गिरने या संघर्ष का संकेत देता है;",
+            "baseline": "आधारभूत संकट संकेत बढ़े हुए हैं;",
+            "risk": "जोखिम स्तर {level} (स्कोर {score}/100)। इकाइयों को तुरंत भेजें।",
+        },
+        "Kannada": {
+            "on_route": "ವಿಷಯ ಅನುಮಾನಿತ ಮಾರ್ಗದಲ್ಲಿದೆ।",
+            "off_route": "ವಿಷಯ {dist:.0f} ಮೀಟರ್‌ಗಳು ದೂರastore ಅನುಮಾನಿತ ಮಾರ್ಗದಿಂದ ಬಿಟ್ಟೆಯಾಗಿದೆ।",
+            "high_audio": "ತೀವ್ರ ಹಿನ್ನೆಲೆ ಶಬ್ದ ({audio}/10) ತತ್ಕಾಳ ಶಾರೀರಿಕ ವಿಪತ್ತನ್ನು ಸೂಚಿಸುತ್ತದೆ;",
+            "high_motion": "ತ್ವರಿತ ಚಲನೆ ಪತ್ತೆಯಾಗಿದೆ ({motion}/10) ಸotto ಅಥವಾ ಸಂಸರಸ್ಯನ್ನು ಸೂಚಿಸುತ್ತದೆ;",
+            "baseline": "ಮೂಲಭೂತ ವಿಪತ್ತಿನ ಲಕ್ಷಣಗಳು ಹೆಚ್ಚಾಗಿವೆ;",
+            "risk": "ಝಪದ ಮಟ್ಟ {level} (স্কೋರ್ {score}/100)। ಒಕ್ಕೂಟಗಳನ್ನು ತಕ್ಷಣ ಕಳುಹಿಸಿ।",
+        },
+        "Tamil": {
+            "on_route": "பொருள் انتظار मार्गத்தில் உள்ளது।",
+            "off_route": "பொருள் எதிர்பார்க்கப்பட்ட வழியிலிருந்து {dist:.0f} மீட்டர்கள் விலகியுள்ளது।",
+            "high_audio": "தீவிர பின்னணி முகரempuan ({audio}/10) உடனடி உடல்விபத்தைக் குறிப்பிடுகிறது;",
+            "high_motion": "தீவிர அசைவு கண்டறியப்பட்டது ({motion}/10) விழுதல் அல்லது கூட்டுக்கலக்கத்தைச் சూചிக்கிறது;",
+            "baseline": "அடிப்படை விபத்து குறிக்கள் அதிகரித்துள்ளன;",
+            "risk": "ஆபத்து மಟ್ಟம் {level} (எண்கள் {score}/100)। அவசரமாக அலகுகளை அனுப்பவும்।",
+        },
+        "Marathi": {
+            "on_route": "विषय अपेक्षित मार्गावर आहे।",
+            "off_route": "विषय अपेक्षित मार्गापासून {dist:.0f} मीटर वेचले आहे।",
+            "high_audio": "तीव्र पार्श्वभूमी ध्वनी ({audio}/10) तात्काळ शारीरिक संकट दर्शवते;",
+            "high_motion": "तीव्र चाल आढळली ({motion}/10) ढकल किंवा संघर्षाचे संकेत देते;",
+            "baseline": "मूलभूत संकट निर्देशक वाढलेले आहेत;",
+            "risk": "जोखीम स्तर {level} (गुण {score}/100)। दल तात्काळ रवाना करा।",
+        },
+        "Bengali": {
+            "on_route": "বিষয় প্রত্যাশিত রুটে রয়েছে।",
+            "off_route": "বিষয় প্রত্যাশিত রুট থেকে {dist:.0f} মিটার দূরে চলে গেছে।",
+            "high_audio": "গভীর পটভূমি শব্দ ({audio}/10) তাৎক্ষণিক শারীরিক দুর্ঘটনা নির্দেশ করে;",
+            "high_motion": "তীব্র গতি সনাক্ত ({motion}/10) পতন বা সংঘর্ষের ইঙ্গিত দেয়;",
+            "baseline": "মৌলিক দুর্ঘটনার সংকেতগুলি বেড়ে গেছে;",
+            "risk": "ঝুঁকির স্তর {level} (স্কোর {score}/100)। অবিলম্বে ইউনিট প্রস্থান করান।",
+        },
+        "Telugu": {
+            "on_route": "విషయం అనుమానిత మార్గంలో ఉంది।",
+            "off_route": "విషయం అనుమానిత మార్గం నుండి {dist:.0f} మీటర్లు దూరంగా వెళ్లిపోయింది।",
+            "high_audio": "తీవ్ర పট� neurite ({audio}/10) తత్కాల శారీరక విపత్తును సూచిస్తుంది;",
+            "high_motion": "తీవ్ర చలనం కనుగొనబడింది ({motion}/10) పడుకోవడం లేదా సంగرسی సూచిస్తుంది;",
+            "baseline": "మూలభూత విపత్తు సూచనలు పెసiences ఉన్నాయి;",
+            "risk": "అపాయ స్థాయి {level} (స్కోర్ {score}/100)। యూనిట்களை తత్కాలते పంపండి।",
+        },
+    }
+    
+    t = templates.get(language, templates["English"])
+    
+    parts = []
+    if distance_off_route > 0:
+        parts.append(t["off_route"].format(dist=distance_off_route))
+    else:
+        parts.append(t["on_route"])
+    if audio_score >= 7:
+        parts.append(t["high_audio"].format(audio=audio_score))
+    elif motion_score >= 7:
+        parts.append(t["high_motion"].format(motion=motion_score))
+    else:
+        parts.append(t["baseline"])
+    parts.append(t["risk"].format(level=risk_level, score=risk_score))
+    return " ".join(parts)
 
 
 def analyze_audio_transcript(transcript: str) -> dict:

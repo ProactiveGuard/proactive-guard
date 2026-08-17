@@ -3,13 +3,65 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
+import sys
+from pathlib import Path
 
-from ai_engine.risk import evaluate_risk, generate_ai_summary, detect_struggle
-from app.services.llm import generate_police_summary, analyze_audio_transcript
+# Add backend to path for ai_engine imports
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from ai_engine.risk import evaluate_risk, generate_ai_summary, detect_struggle, RiskTracker
+from app.services.llm import generate_police_summary, analyze_audio_transcript, gemini_enabled
 from app.services.supabase import supabase_db
+import time
+from threading import Lock
 
 
 app = FastAPI(title="Proactive Guard API")
+
+
+# ============================================================
+# AI METRICS TRACKING (Day 5)
+# ============================================================
+
+class AIMetrics:
+    def __init__(self):
+        self._lock = Lock()
+        self.total_predictions = 0
+        self.false_positives = 0
+        self.true_positives = 0
+        self.latency_sum_ms = 0.0
+        self.language_distribution = {}
+        self.risk_level_distribution = {}
+
+    def record_prediction(self, risk_level: str, language: str, latency_ms: float, is_false_positive: bool = False):
+        with self._lock:
+            self.total_predictions += 1
+            self.latency_sum_ms += latency_ms
+            self.risk_level_distribution[risk_level] = self.risk_level_distribution.get(risk_level, 0) + 1
+            self.language_distribution[language] = self.language_distribution.get(language, 0) + 1
+            if is_false_positive:
+                self.false_positives += 1
+            else:
+                self.true_positives += 1
+
+    def get_metrics(self) -> dict:
+        with self._lock:
+            fp_rate = 0.0
+            if self.total_predictions > 0:
+                fp_rate = self.false_positives / self.total_predictions
+            avg_latency = 0.0
+            if self.total_predictions > 0:
+                avg_latency = self.latency_sum_ms / self.total_predictions
+            return {
+                "total_predictions": self.total_predictions,
+                "false_positive_rate": round(fp_rate, 4),
+                "avg_latency_ms": round(avg_latency, 2),
+                "language_distribution": self.language_distribution,
+                "risk_level_distribution": self.risk_level_distribution,
+            }
+
+
+ai_metrics = AIMetrics()
 
 
 # ============================================================
@@ -84,6 +136,8 @@ def check_status():
 @app.post("/api/v1/telemetry", response_model=IncidentResponse)
 def receive_telemetry(data: TelemetryData):
 
+    start_time = time.time()
+    
     # Day 3: Run NLP threat analysis on audio transcript if provided
     transcript_threat = None
     if data.audio_transcript:
@@ -102,6 +156,14 @@ def receive_telemetry(data: TelemetryData):
         audio_transcript_threat=transcript_threat,
     )
 
+    # Determine language for summary based on location
+    language = "English"
+    try:
+        from ai_engine.risk import get_language_for_location
+        language = get_language_for_location(data.latitude, data.longitude)
+    except Exception:
+        pass
+
     # Generate police summary
     summary_text = generate_police_summary(
         audio_score=data.audio_score,
@@ -109,6 +171,7 @@ def receive_telemetry(data: TelemetryData):
         distance_off_route=data.distance_off_route_m,
         risk_level=risk_data["risk_level"],
         risk_score=risk_data["risk_score"],
+        language=language,
     )
 
     # Generate incident ID
@@ -142,6 +205,14 @@ def receive_telemetry(data: TelemetryData):
                 print(
                     f"Failed to save incident to Supabase: {e}"
                 )
+
+    # Record AI metrics
+    latency_ms = (time.time() - start_time) * 1000
+    ai_metrics.record_prediction(
+        risk_level=risk_data["risk_level"],
+        language=language,
+        latency_ms=latency_ms,
+    )
 
     return {
         "incident_id": incident_id,
@@ -280,3 +351,35 @@ def stop_journey(journey_id: str):
             status_code=500,
             detail=f"Could not stop journey: {str(e)}",
         )
+
+
+# ============================================================
+# AI METRICS ENDPOINT (Day 5)
+# ============================================================
+
+@app.get("/api/v1/metrics/ai")
+def get_ai_metrics():
+    """
+    Returns AI model performance metrics for monitoring.
+    
+    Includes:
+    - Total predictions made
+    - False positive rate
+    - Average latency
+    - Language distribution
+    - Risk level distribution
+    """
+    return ai_metrics.get_metrics()
+
+
+@app.get("/api/v1/health/ai")
+def ai_health_check():
+    """
+    Health check for AI components.
+    """
+    return {
+        "gemini_configured": gemini_enabled(),
+        "model": "gemini-2.5-flash" if gemini_enabled() else "rule-based fallback",
+        "risk_engine": "v2.0 - temporal smoothing + confidence thresholds + multi-language",
+        "geo_engine": "Haversine formula with 500m off-route threshold",
+    }
