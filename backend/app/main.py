@@ -9,6 +9,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from datetime import datetime
 from typing import Optional
 import sys
+import os
 from pathlib import Path
 
 # Add backend to path for ai_engine imports
@@ -28,8 +29,10 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Initialize Sentry
-sentry_sdk.init(dsn="YOUR_SENTRY_DSN", traces_sample_rate=1.0, integrations=[FastApiIntegration()])
+# Initialize Sentry (only if DSN is provided)
+sentry_dsn = os.getenv("SENTRY_DSN")
+if sentry_dsn:
+    sentry_sdk.init(dsn=sentry_dsn, traces_sample_rate=1.0, integrations=[FastApiIntegration()])
 
 # Import WebSocket manager and Auth
 from app.websockets import manager
