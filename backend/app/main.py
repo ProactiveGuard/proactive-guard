@@ -1,6 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 from datetime import datetime
 from typing import Optional
 import sys
@@ -17,6 +22,19 @@ from threading import Lock
 
 
 app = FastAPI(title="Proactive Guard API")
+
+# Initialize Rate Limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Initialize Sentry
+sentry_sdk.init(dsn="YOUR_SENTRY_DSN", traces_sample_rate=1.0, integrations=[FastApiIntegration()])
+
+# Import WebSocket manager and Auth
+from app.websockets import manager
+from app.auth import create_access_token
+from app.dependencies import get_current_user
 
 
 # ============================================================
@@ -134,7 +152,8 @@ def check_status():
 # ============================================================
 
 @app.post("/api/v1/telemetry", response_model=IncidentResponse)
-def receive_telemetry(data: TelemetryData):
+@limiter.limit("10/minute")
+async def receive_telemetry(request: Request, data: TelemetryData):
 
     start_time = time.time()
     
@@ -200,6 +219,9 @@ def receive_telemetry(data: TelemetryData):
                 print(
                     f"Successfully saved incident {incident_id} to Supabase!"
                 )
+                
+                # Broadcast the incident to all connected dashboards via WebSocket!
+                await manager.broadcast(incident_record)
 
             except Exception as e:
                 print(
@@ -383,3 +405,65 @@ def ai_health_check():
         "risk_engine": "v2.0 - temporal smoothing + confidence thresholds + multi-language",
         "geo_engine": "Haversine formula with 500m off-route threshold",
     }
+
+
+# ============================================================
+# AUTHENTICATION (Day 4)
+# ============================================================
+from pydantic import BaseModel
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/v1/auth/register")
+def register_user(request: AuthRequest):
+    # Hackathon mock: normally you'd save to DB with hashed password
+    return {"message": "User registered successfully"}
+
+@app.post("/api/v1/auth/login")
+def login_user(request: AuthRequest):
+    # Hackathon mock: any password works
+    access_token = create_access_token(data={"sub": request.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+# ============================================================
+# WEBSOCKET (Day 4)
+# ============================================================
+@app.websocket("/ws/incidents")
+async def websocket_endpoint(ws: WebSocket):
+    await manager.connect(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(ws)
+
+
+# ============================================================
+# DAY 4 - RESOLVE & ASSIGN ENDPOINTS
+# ============================================================
+@app.delete("/api/v1/incidents/{incident_id}")
+async def resolve_incident(incident_id: str):
+    if supabase_db is not None:
+        try:
+            supabase_db.table("incidents").delete().eq("incident_id", incident_id).execute()
+            return {"message": "Incident resolved"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "Incident resolved (mock)"}
+
+class AssignRequest(BaseModel):
+    responder: str
+
+@app.patch("/api/v1/incidents/{incident_id}/assign")
+async def assign_responder(incident_id: str, request: AssignRequest):
+    if supabase_db is not None:
+        try:
+            # Assuming you add a responder column in Supabase!
+            supabase_db.table("incidents").update({"responder": request.responder}).eq("incident_id", incident_id).execute()
+            return {"message": f"Assigned {request.responder}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"message": f"Assigned {request.responder} (mock)"}
+

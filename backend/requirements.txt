@@ -4,3 +4,12 @@ pydantic
 google-genai
 python-dotenv
 supabase
+google-generativeai
+websockets
+python-jose[cryptography]
+passlib[bcrypt]
+slowapi
+sentry-sdk[fastapi]
+pytest
+pytest-asyncio
+httpx
