@@ -1,4 +1,5 @@
  import 'package:flutter/material.dart'; 
+ import 'services/api.dart';
  
     // This is the starting point of your app 
     void main() { 
@@ -33,12 +34,10 @@
           body: Center( 
             child: ElevatedButton( 
               // What happens when the button is pressed: 
-              onPressed: () {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text("SOS BUTTON PRESSED! SENDING HELP!"),
-    ),
-  );
+             onPressed: () {
+  print("SOS BUTTON PRESSED! Sending to Backend...");
+
+  ApiService.sendSOSAlert();
 },
               // How the button looks: 
               style: ElevatedButton.styleFrom( 

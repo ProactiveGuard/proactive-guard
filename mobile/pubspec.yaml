@@ -1,0 +1,34 @@
+name: women_safety_app
+description: "Proactive Guard - Women Safety Mobile App"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.0
+  geolocator: ^13.0.1
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.3.2
+  provider: ^6.1.2
+  audioplayers: ^6.1.0
+  record: ^5.1.0
+  flutter_background_service: ^5.1.0
+  flutter_background_service_android: ^6.3.0
+  intl: ^0.19.0
+  connectivity_plus: ^6.1.0
+  sensors_plus: ^6.1.0
+  path_provider: ^2.1.4
+  uuid: ^4.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
