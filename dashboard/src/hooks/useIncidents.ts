@@ -61,7 +61,7 @@ export function useIncidents() {
 
   const resolveIncident = useCallback(async (incidentId: string) => {
     try {
-      const response = await fetch(`${API_URL}/incidents/${incidentId}`, { method: 'DELETE' });
+      const response = await fetch(`${API_URL}/api/v1/incidents/${incidentId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Failed to resolve incident');
       setIncidents((prev) => prev.filter((i) => i.incident_id !== incidentId));
       return true;
@@ -73,7 +73,7 @@ export function useIncidents() {
 
   const assignResponder = useCallback(async (incidentId: string, responder: string) => {
     try {
-      const response = await fetch(`${API_URL}/incidents/${incidentId}/assign`, {
+      const response = await fetch(`${API_URL}/api/v1/incidents/${incidentId}/assign`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ responder }),
