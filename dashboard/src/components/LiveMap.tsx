@@ -1,12 +1,14 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
   Marker,
   Popup,
   Circle,
-  Polyline
+  Polyline,
+  useMap
 } from "react-leaflet";
 
 import L from "leaflet";
@@ -23,6 +25,16 @@ L.Icon.Default.mergeOptions({
   shadowUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png"
 });
+
+function MapCameraman({ targetLat, targetLng }: { targetLat: number; targetLng: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.flyTo([targetLat, targetLng], 15);
+  }, [map, targetLat, targetLng]);
+
+  return null;
+}
 
 interface MapProps {
   targetLat: number;
@@ -55,6 +67,8 @@ export default function LiveMap({ targetLat, targetLng, routeCoords, safeZones }
           width: "100%"
         }}
       >
+        <MapCameraman targetLat={targetLat} targetLng={targetLng} />
+
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
